@@ -1,0 +1,219 @@
+diff --git a/components/elero/cover_sm.cpp b/components/elero/cover_sm.cpp
+index 9bf116e..a8fd9f7 100644
+--- a/components/elero/cover_sm.cpp
++++ b/components/elero/cover_sm.cpp
+@@ -182,9 +182,9 @@ State on_command(const State &state, uint8_t cmd_byte, uint32_t now,
+ 
+     return std::visit(overloaded{
+         [&](const Idle &) -> State {
+-            if (cmd == packet::command::UP || cmd == packet::command::TILT)
++            if (cmd == packet::command::UP || cmd == packet::command::TILT_UP)
+                 return Opening{pos, now};
+-            if (cmd == packet::command::DOWN)
++            if (cmd == packet::command::DOWN || cmd == packet::command::TILT_DOWN)
+                 return Closing{pos, now};
+             return state;  // CHECK, STOP while idle — no change
+         },
+@@ -192,7 +192,7 @@ State on_command(const State &state, uint8_t cmd_byte, uint32_t now,
+         [&](const Opening &) -> State {
+             if (cmd == packet::command::STOP)
+                 return Stopping{pos, now};
+-            if (cmd == packet::command::DOWN)
++            if (cmd == packet::command::DOWN || cmd == packet::command::TILT_DOWN)
+                 return Closing{pos, now};  // Reverse
+             return state;
+         },
+@@ -200,16 +200,16 @@ State on_command(const State &state, uint8_t cmd_byte, uint32_t now,
+         [&](const Closing &) -> State {
+             if (cmd == packet::command::STOP)
+                 return Stopping{pos, now};
+-            if (cmd == packet::command::UP || cmd == packet::command::TILT)
++            if (cmd == packet::command::UP || cmd == packet::command::TILT_UP)
+                 return Opening{pos, now};  // Reverse
+             return state;
+         },
+ 
+         [&](const Stopping &) -> State {
+             // User commands override cooldown
+-            if (cmd == packet::command::UP || cmd == packet::command::TILT)
++            if (cmd == packet::command::UP || cmd == packet::command::TILT_UP)
+                 return Opening{pos, now};
+-            if (cmd == packet::command::DOWN)
++            if (cmd == packet::command::DOWN || cmd == packet::command::TILT_DOWN)
+                 return Closing{pos, now};
+             return state;
+         },
+diff --git a/components/elero/device_registry.cpp b/components/elero/device_registry.cpp
+index baf1ba9..5d2566c 100644
+--- a/components/elero/device_registry.cpp
++++ b/components/elero/device_registry.cpp
+@@ -252,7 +252,7 @@ void DeviceRegistry::set_cover_position(Device &dev, float target, CommandSource
+     notify_state_changed_(dev, now);
+ }
+ 
+-void DeviceRegistry::command_cover_tilt(Device &dev, CommandSource src) {
++void DeviceRegistry::command_cover_tilt(Device &dev, bool open, CommandSource src) {
+     if (!dev.is_cover()) return;
+ 
+     auto &cover = std::get<CoverDevice>(dev.logic);
+@@ -260,9 +260,10 @@ void DeviceRegistry::command_cover_tilt(Device &dev, CommandSource src) {
+     uint32_t now = millis();
+     cover.last_command_source = src;
+ 
+-    (void) dev.sender.enqueue(packet::command::TILT);
++    const uint8_t cmd = open ? packet::command::TILT_UP : packet::command::TILT_DOWN;
++    (void) dev.sender.enqueue(cmd);
+     (void) dev.sender.enqueue(packet::command::CHECK, packet::limits::CHECK_PACKETS, packet::msg_type::COMMAND);
+-    cover.state = cover_sm::on_command(cover.state, packet::command::TILT, now, ctx);
++    cover.state = cover_sm::on_command(cover.state, cmd, now, ctx);
+     cover.poll.on_command_sent(now);
+ 
+     notify_state_changed_(dev, now);
+diff --git a/components/elero/device_registry.h b/components/elero/device_registry.h
+index 55d72b4..aa48559 100644
+--- a/components/elero/device_registry.h
++++ b/components/elero/device_registry.h
+@@ -88,7 +88,7 @@ class DeviceRegistry {
+     void set_cover_position(Device &dev, float target, CommandSource src = CommandSource::HUB);
+ 
+     /// Dispatch a tilt command to a cover device.
+-    void command_cover_tilt(Device &dev, CommandSource src = CommandSource::HUB);
++    void command_cover_tilt(Device &dev, bool open, CommandSource src = CommandSource::HUB);
+ 
+     /// Dispatch a command byte to a light device (on/off + FSM + enqueue).
+     void command_light(Device &dev, uint8_t cmd_byte, CommandSource src = CommandSource::HUB);
+diff --git a/components/elero/elero_packet.h b/components/elero/elero_packet.h
+index 399aaff..e96eecb 100644
+--- a/components/elero/elero_packet.h
++++ b/components/elero/elero_packet.h
+@@ -15,7 +15,8 @@
+ ///   [20-21]=payload1,2 [22-29]=encrypted(crypto,cmd,pad,parity)
+ ///
+ /// Quick Reference - Commands:
+-///   CHECK=0x00  STOP=0x10  UP=0x20  TILT=0x24  DOWN=0x40  INT=0x44
++///   CHECK=0x00  STOP=0x10  TILT_UP=0x20  UP=0x21  VENTILATION=0x24
++///   TILT_DOWN=0x40  DOWN_NO_TILT=0x41  DOWN=0x44
+ 
+ #pragma once
+ 
+@@ -91,10 +92,12 @@ constexpr uint8_t ADDR_3BYTE_THRESHOLD = 0x60;  ///< Types > this use 3-byte add
+ namespace command {
+ constexpr uint8_t CHECK = 0x00;               ///< Request status (no movement)
+ constexpr uint8_t STOP = 0x10;                ///< Stop movement
+-constexpr uint8_t UP = 0x20;                  ///< Move up / open
+-constexpr uint8_t TILT = 0x24;                ///< Tilt position
+-constexpr uint8_t DOWN = 0x40;                ///< Move down / close
+-constexpr uint8_t INTERMEDIATE = 0x44;        ///< Move to intermediate position
++constexpr uint8_t TILT_UP = 0x20;             ///< Tilt step open (short up)
++constexpr uint8_t UP = 0x21;                  ///< Move up / open (full travel)
++constexpr uint8_t VENTILATION = 0x24;         ///< Restore saved tilt/ventilation position
++constexpr uint8_t TILT_DOWN = 0x40;           ///< Tilt step closed (short down)
++constexpr uint8_t DOWN_NO_TILT = 0x41;        ///< Move down fully, no tilt restore
++constexpr uint8_t DOWN = 0x44;                ///< Move down / close (full travel + tilt)
+ constexpr uint8_t INVALID = 0xFF;             ///< Invalid/unknown command marker
+ }  // namespace command
+ 
+diff --git a/components/elero/elero_strings.cpp b/components/elero/elero_strings.cpp
+index 6eaa24b..be05ce3 100644
+--- a/components/elero/elero_strings.cpp
++++ b/components/elero/elero_strings.cpp
+@@ -52,11 +52,11 @@ const char *elero_command_to_string(uint8_t command) {
+       return "STOP";
+     case packet::command::UP:
+       return "UP";
+-    case packet::command::TILT:
++    case packet::command::TILT_UP:
+       return "TILT";
+     case packet::command::DOWN:
+       return "DOWN";
+-    case packet::command::INTERMEDIATE:
++    case packet::command::DOWN_NO_TILT:
+       return "INTERMEDIATE";
+     default:
+       return "UNKNOWN";
+@@ -75,9 +75,9 @@ uint8_t elero_action_to_command(const char *action) {
+   if (strcmp(action, action::CHECK) == 0)
+     return packet::command::CHECK;
+   if (strcmp(action, action::TILT) == 0)
+-    return packet::command::TILT;
++    return packet::command::TILT_UP;
+   if (strcmp(action, action::INT) == 0)
+-    return packet::command::INTERMEDIATE;
++    return packet::command::DOWN_NO_TILT;
+   return packet::command::INVALID;
+ }
+ 
+@@ -87,8 +87,8 @@ const char *elero_command_to_action(uint8_t cmd_byte) {
+     case packet::command::DOWN: return action::DOWN;
+     case packet::command::STOP: return action::STOP;
+     case packet::command::CHECK: return action::CHECK;
+-    case packet::command::TILT: return action::TILT;
+-    case packet::command::INTERMEDIATE: return action::INT;
++    case packet::command::TILT_UP: return action::TILT;
++    case packet::command::DOWN_NO_TILT: return action::INT;
+     default: return nullptr;
+   }
+ }
+diff --git a/components/elero_mqtt/mqtt_adapter.cpp b/components/elero_mqtt/mqtt_adapter.cpp
+index 98d9257..5aa14d6 100644
+--- a/components/elero_mqtt/mqtt_adapter.cpp
++++ b/components/elero_mqtt/mqtt_adapter.cpp
+@@ -332,11 +332,12 @@ void MqttAdapter::subscribe_cover_commands_(const Device &dev) {
+         });
+ 
+     ctx_.subscribe(DeviceType::COVER, addr, mqtt_topic::TILT,
+-        [this, addr](const char *, const char *) {
++        [this, addr](const char *, const char *payload) {
+             Device *d = registry_->find(addr, DeviceType::COVER);
+             if (d == nullptr) return;
+ 
+-            registry_->command_cover_tilt(*d);
++            // HA sends a tilt position 0-100; >=50 opens the slats, <50 closes them
++            registry_->command_cover_tilt(*d, atoi(payload) >= 50);
+         });
+ 
+     ESP_LOGD(TAG, "Subscribed to cover commands for 0x%06x", addr);
+diff --git a/components/elero_web/elero_web_server.cpp b/components/elero_web/elero_web_server.cpp
+index 31a4c5f..c7c7d88 100644
+--- a/components/elero_web/elero_web_server.cpp
++++ b/components/elero_web/elero_web_server.cpp
+@@ -59,9 +59,13 @@ void EleroWebServer::setup() {
+     return;
+   }
+ 
+-  // Register as log listener to forward logs to WebSocket clients
++  // Register log callback to forward logs to WebSocket clients
+   if (logger::global_logger != nullptr) {
+-    logger::global_logger->add_log_listener(this);
++    logger::global_logger->add_log_callback(
++      this, [](void *inst, uint8_t level, const char *tag,
++               const char *message, size_t message_len) {
++        static_cast<EleroWebServer *>(inst)->on_log(level, tag, message, message_len);
++      });
+   }
+ 
+   if (g_server != nullptr) {
+diff --git a/components/elero_web/elero_web_server.h b/components/elero_web/elero_web_server.h
+index d192372..6b280fb 100644
+--- a/components/elero_web/elero_web_server.h
++++ b/components/elero_web/elero_web_server.h
+@@ -23,7 +23,7 @@ namespace elero {
+ /// WebSocket server - acts as RF bridge, log forwarder, and CRUD proxy
+ /// Server → Client: config (on connect), rf (packets), log (ESPHome logs), crud events
+ /// Client → Server: cmd (blind commands), raw (raw RF packets), upsert_device, remove_device
+-class EleroWebServer : public Component, public OutputAdapter, public logger::LogListener {
++class EleroWebServer : public Component, public OutputAdapter {
+  public:
+   void setup() override;
+   void loop() override;
+@@ -47,8 +47,8 @@ class EleroWebServer : public Component, public OutputAdapter, public logger::Lo
+   void on_config_changed(const Device &dev) override;
+   void on_rf_packet(const RfPacketInfo &pkt) override;
+ 
+-  // LogListener interface - forward logs to WebSocket clients
+-  void on_log(uint8_t level, const char *tag, const char *message, size_t message_len) override;
++  // Forwards logs to WebSocket clients (registered via Logger::add_log_callback)
++  void on_log(uint8_t level, const char *tag, const char *message, size_t message_len);
+ 
+  protected:
+   Elero *parent_{nullptr};

@@ -1,0 +1,62 @@
+# Elero blind gateway — ESP32-C6-DevKitC-1 + CC1101 868 MHz
+#
+# Lives on the Home Assistant box as /config/esphome/testc6.yaml.
+# Secrets are in /config/esphome/secrets.yaml — see secrets.yaml.example.
+#
+# The component source is a local checkout, NOT a github:// source, because
+# this installation runs a patched fork. See README.md → Rebuilding.
+
+esphome:
+  name: elero-c6-test
+
+esp32:
+  board: esp32-c6-devkitc-1
+  framework:
+    type: esp-idf
+
+logger:
+api:
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+external_components:
+  - source:
+      type: local
+      path: elero-src/components
+
+# SPI to the CC1101. CS is GPIO6, not GPIO5: GPIO5 is a strapping pin on the C6.
+spi:
+  clk_pin: GPIO18
+  mosi_pin: GPIO23
+  miso_pin: GPIO19
+
+elero:
+  cs_pin: GPIO6
+  gdo0_pin: GPIO3
+  # Frequency left at the default preset (freq2 0x21 / freq1 0x71 / freq0 0x7a,
+  # 869.525 MHz). It works with these motors — do not set it.
+
+mqtt:
+  broker: !secret mqtt_broker
+  username: !secret mqtt_username
+  password: !secret mqtt_password
+
+elero_mqtt:
+  topic_prefix: elero
+  discovery_prefix: homeassistant
+  device_name: "Elero Gateway"
+
+# elero_nvs: — do not enable. It does not compile on ESPHome >= 2026.x.
+# See https://github.com/manuschillerdev/esphome-elero/issues/59
+
+elero_web:
+  port: 80
+
+# KEEP THIS BLOCK. Without ota:, the only way to reflash is over serial, and a
+# serial factory flash erases NVS — which means every blind has to be
+# rediscovered by hand at the blind. That has already happened once.
+ota:
+  - platform: esphome
+    password: !secret ota_password
