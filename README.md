@@ -26,7 +26,7 @@ directions working.
 4. Flash once over serial, then only ever over the air — [step 3](#3-flash)
 5. Check the radio is receiving — [verifying](#verifying)
 6. Restore the seven blinds — [devices.md](devices.md#restoring-the-registry)
-7. Take a backup immediately — [why](#take-a-backup)
+7. Dump the registry and keep it — [`dump-registry.py`](dump-registry.py)
 
 Budget an evening, most of it the first ESP-IDF build.
 
@@ -162,18 +162,29 @@ asyncio.run(main())
 EOF
 ```
 
-### Take a backup
+### Dump the registry
 
-Once the gateway runs firmware newer than v0.10.1, the Hub panel gains
-**Backup & Restore**. Download the JSON and keep it next to this repository.
-That is the difference between a five-minute recovery and an afternoon of
-walking around the house.
+`./dump-registry.py` writes the full device registry to [`registry/`](registry/),
+including a `restore-<date>.json` that the web UI's Restore button accepts. It
+reads the `config` event the gateway pushes on connect — no command is sent and
+nothing is written, so it is safe to run any time. Do it after every change.
+
+That file is the difference between a five-minute recovery and an afternoon of
+walking around the house. Note that restoring it needs firmware newer than
+v0.10.1; see [devices.md](devices.md#restoring-the-registry).
 
 ## Known limitations
 
 - **Do not enable `elero_nvs:`.** It does not compile on ESPHome ≥ 2026.x
   ([#59](https://github.com/manuschillerdev/esphome-elero/issues/59)). This
   gateway uses `elero_mqtt`, which is unaffected.
+- **The live `config` event omits 5 per-device RF bytes** (`hop`, `payload_1`,
+  `payload_2`, `msg_type`, `type2`), and the web UI's `upsert_device` omits them
+  too — so every save through the Manage tab resets them to defaults. Harmless
+  here because these blinds use the defaults, but it means the UI cannot express
+  a non-default value. See [devices.md](devices.md#what-a-dump-does-and-does-not-contain).
+- **Auto-discovered remotes are not persisted** and disappear on reboot until
+  explicitly saved. Two dumps will disagree about remotes.
 - **The hub reports its version as 0.9.0.** A stale constant, fixed by
   [#57](https://github.com/manuschillerdev/esphome-elero/pull/57). Cosmetic, but
   it is also why builds used to fail on a 404 for the prebuilt UI header.
