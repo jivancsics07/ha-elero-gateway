@@ -104,6 +104,14 @@ Against a −104 dBm receiver, from one central position.
 They live in RAM and vanish on reboot unless explicitly saved. `updated_at: 0`
 in a dump means exactly that: never written to NVS.
 
+This bit harder than it should have: the gateway was rebooting **every 15
+minutes** because `testc6.yaml` had a bare `api:` block and nothing ever
+connects to the native API in MQTT mode (see
+[README](README.md#3-flash)). Every discovered remote was therefore thrown away
+within the quarter hour. With `reboot_timeout: 0s` a discovered remote at least
+survives until the next real restart — but still save it if you want to keep
+it.
+
 | Address | In dumps | Note |
 |-----------|----------|------|
 | `0x314173` | always | the remote all 7 blinds are paired to. Reappears every boot because every blind's status reply names it. |

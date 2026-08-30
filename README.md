@@ -122,6 +122,12 @@ The layout `testc6.yaml` expects:
     └── components/
 ```
 
+> **Set `api: reboot_timeout: 0s`.** With a bare `api:` block ESPHome reboots
+> the device every 15 minutes when no native-API client connects — and in MQTT
+> mode nothing ever does. Measured on this gateway before the fix: boots 14.9
+> minutes apart, `[E][api] No clients; rebooting`. `testc6.yaml` here already
+> carries the setting.
+
 ### 3. Flash
 
 First flash over USB serial. Everything after that goes over the air.

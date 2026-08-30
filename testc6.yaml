@@ -15,7 +15,14 @@ esp32:
     type: esp-idf
 
 logger:
+
+# Home Assistant reaches this gateway over MQTT, not the native API, so nothing
+# ever connects on port 6053. ESPHome's default api reboot_timeout is 15 min,
+# and with no client it reboots the device on that schedule — which also wipes
+# every auto-discovered (unsaved) remote. Keep the API for `esphome logs`, but
+# switch the timeout off.
 api:
+  reboot_timeout: 0s
 
 wifi:
   ssid: !secret wifi_ssid
