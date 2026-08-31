@@ -129,6 +129,11 @@ The layout `testc6.yaml` expects:
 > their own 15-minute `reboot_timeout`, so removing `api:` costs no watchdog.
 > `testc6.yaml` here has no `api:` block; if you want one present but idle, use
 > `api:` with `reboot_timeout: 0s`.
+>
+> Applied to the live gateway on 2026-08-31. Uptime passed 28 minutes — two
+> reboot windows — where it had never previously exceeded 15. Dropping the
+> component also saved a little image: flash 60.6 % → **59.9 %**, RAM
+> **35.7 %** (unchanged).
 
 ### 3. Flash
 
