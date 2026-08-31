@@ -108,7 +108,7 @@ This bit harder than it should have: the gateway was rebooting **every 15
 minutes** because `testc6.yaml` had a bare `api:` block and nothing ever
 connects to the native API in MQTT mode (see
 [README](README.md#3-flash)). Every discovered remote was therefore thrown away
-within the quarter hour. With `reboot_timeout: 0s` a discovered remote at least
+within the quarter hour. With the `api:` block removed, a discovered remote
 survives until the next real restart — but still save it if you want to keep
 it.
 

@@ -16,13 +16,21 @@ esp32:
 
 logger:
 
-# Home Assistant reaches this gateway over MQTT, not the native API, so nothing
-# ever connects on port 6053. ESPHome's default api reboot_timeout is 15 min,
-# and with no client it reboots the device on that schedule — which also wipes
-# every auto-discovered (unsaved) remote. Keep the API for `esphome logs`, but
-# switch the timeout off.
-api:
-  reboot_timeout: 0s
+# NO `api:` BLOCK — deliberate.
+#
+# Home Assistant reaches this gateway over MQTT, so nothing ever connects to
+# the native API on port 6053. ESPHome's api reboot_timeout defaults to 15 min
+# and reboots the device when no client has connected in that window, so a bare
+# `api:` block reboots this gateway every 15 minutes, forever. Measured: three
+# consecutive boots 14 min 53 s and 14 min 56 s apart.
+#
+# The watchdog is not lost. `wifi:` and `mqtt:` each carry their own
+# reboot_timeout, both 15 min by default, and those cover the transport this
+# device actually uses.
+#
+# If you ever adopt this device in HA's ESPHome integration, add the block back
+# WITH a client connecting to it. If you want it present but idle, the other
+# safe form is `api:` + `reboot_timeout: 0s`.
 
 wifi:
   ssid: !secret wifi_ssid
