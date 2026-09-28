@@ -3,8 +3,9 @@
 # Lives on the Home Assistant box as /config/esphome/testc6.yaml.
 # Secrets are in /config/esphome/secrets.yaml — see secrets.yaml.example.
 #
-# The component source is a local checkout, NOT a github:// source, because
-# this installation runs a patched fork. See README.md → Rebuilding.
+# Install it like any other ESPHome device: paste this file into the ESPHome
+# Builder add-on and press Install. The patched component is pulled straight
+# from GitHub — no SSH, no git clone on the HA box. See README.md → Rebuilding.
 
 esphome:
   name: elero-c6-test
@@ -36,10 +37,14 @@ wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
 
+# The patched fork, not upstream: upstream's command bytes only nudge the slats
+# on these Raffstore motors (see elero-command-bytes.md). Pinned to a commit of
+# branch local/schlotterer-variant so a rebase of that branch never changes the
+# firmware behind your back. To update, replace the hash with the branch's new
+# head.
 external_components:
-  - source:
-      type: local
-      path: elero-src/components
+  - source: github://deyanp/esphome-elero@7332e93e29e48f568b668dcf69c27aca5efdaa1e
+    components: [elero, elero_mqtt, elero_web]
 
 # SPI to the CC1101. CS is GPIO6, not GPIO5: GPIO5 is a strapping pin on the C6.
 spi:

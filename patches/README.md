@@ -47,8 +47,8 @@ Found while splitting the work, and carried on the same fork branch:
 ## Applying the diff by hand
 
 Only needed if starting from upstream v0.10.1 rather than from the fork branch.
-The normal rebuild path is to clone `local/schlotterer-variant`, which already
-contains all of this — see the [rebuild procedure](../README.md#rebuilding-from-scratch).
+The normal rebuild path pulls `local/schlotterer-variant` via `github://`,
+which already contains all of this — see the [rebuild procedure](../README.md#rebuilding-from-scratch).
 
 ```bash
 git clone https://github.com/manuschillerdev/esphome-elero

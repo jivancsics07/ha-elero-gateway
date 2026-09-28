@@ -11,7 +11,7 @@ device registry, and the local component patches these motors need.
 | Radio | CC1101 868 MHz module, SPI |
 | Framework | ESP-IDF 5.5.5 (no Arduino core exists for the C6) |
 | ESPHome | 2026.8.1 |
-| Component | [manuschillerdev/esphome-elero](https://github.com/manuschillerdev/esphome-elero), patched — see [patches/](patches/) |
+| Component | [manuschillerdev/esphome-elero](https://github.com/manuschillerdev/esphome-elero), patched fork pulled via `github://` — see [patches/](patches/) |
 | Mode | `elero_mqtt` — MQTT discovery into Home Assistant |
 | Image | RAM 37.0 % (167 106 / 452 112 B), flash 61.7 % (1 131 752 / 1 835 008 B) |
 
@@ -21,9 +21,9 @@ directions working.
 ### What the whole job looks like
 
 1. Wire the CC1101 to the C6 — [hardware](#hardware)
-2. Clone the patched component onto the HA box — [step 1](#1-get-the-component-source)
-3. Drop in `testc6.yaml` and `secrets.yaml` — [step 2](#2-install-the-esphome-config)
-4. Flash once over serial, then only ever over the air — [step 3](#3-flash)
+2. Add the secrets in the ESPHome Builder — [step 1](#1-add-the-secrets)
+3. Add a device and paste in `testc6.yaml` — [step 2](#2-add-the-device)
+4. Install once over USB, then only ever wirelessly — [step 3](#3-install)
 5. Check the radio is receiving — [verifying](#verifying)
 6. Restore the seven blinds — [devices.md](devices.md#restoring-the-registry)
 7. Dump the registry and keep it — [`dump-registry.py`](dump-registry.py)
@@ -89,38 +89,29 @@ against a −104 dBm receiver — comfortable margin from a single central posit
 
 ## Rebuilding from scratch
 
-### 1. Get the component source
+Installed like any other ESPHome device, from the **ESPHome Builder** add-on in
+Home Assistant. No SSH, no git on the HA box: `testc6.yaml` pulls the patched
+component straight from GitHub.
 
-The gateway builds against a **local checkout**, not a `github://` source,
-because it runs a patched fork.
+### 1. Add the secrets
 
-```bash
-# on the HA box, via the Terminal & SSH add-on
-cd /config/esphome
-git clone https://github.com/deyanp/esphome-elero elero-src
-cd elero-src
-git checkout local/schlotterer-variant
-```
+In the ESPHome Builder, click **Secrets** (top right) and add the keys from
+[`secrets.yaml.example`](secrets.yaml.example) with the real values.
 
-`local/schlotterer-variant` is upstream `dev` plus every fix listed in
-[patches/](patches/), plus the command byte remap. It rebases onto upstream as
-the PRs merge.
+### 2. Add the device
 
-### 2. Install the ESPHome config
+**+ New device → Continue → Skip** (or any name — the YAML is replaced next),
+then **Edit** the new device and replace its entire content with
+[`testc6.yaml`](testc6.yaml). Save. Keep `name: elero-c6-test`: it is the
+hostname, the OTA target and the MQTT topic prefix.
 
-Copy [`testc6.yaml`](testc6.yaml) to `/config/esphome/testc6.yaml`, and
-[`secrets.yaml.example`](secrets.yaml.example) to `/config/esphome/secrets.yaml`
-with the real values filled in.
-
-The layout `testc6.yaml` expects:
-
-```
-/config/esphome/
-├── testc6.yaml
-├── secrets.yaml
-└── elero-src/          ← the clone from step 1
-    └── components/
-```
+The component comes from
+[`deyanp/esphome-elero`](https://github.com/deyanp/esphome-elero/tree/local/schlotterer-variant),
+branch `local/schlotterer-variant` — upstream `dev` plus every fix listed in
+[patches/](patches/), plus the command byte remap. The YAML pins a commit of
+that branch, so a rebase of the branch never changes the firmware unnoticed. To
+pick up a newer state, replace the hash in `external_components:` with the
+branch's new head and reinstall.
 
 > **Do not add an `api:` block.** ESPHome reboots the device every 15 minutes
 > when no native-API client connects (`reboot_timeout`, default `15min`), and in
@@ -134,18 +125,51 @@ The layout `testc6.yaml` expects:
 > reboot windows — where it had never previously exceeded 15. Dropping the
 > component also saved a little image: flash 60.6 % → **59.9 %**, RAM
 > **35.7 %** (unchanged).
+>
+> Without `api:` the device never shows up under *Settings → Devices → ESPHome*
+> and HA does not offer to adopt it. That is expected: the covers arrive through
+> the MQTT integration instead.
 
-### 3. Flash
+### 3. Install
 
-First flash over USB serial. Everything after that goes over the air.
+Click **Install** on the device card.
 
-```bash
-esphome run testc6.yaml
-```
+- **First time, blank board:** *Plug into this computer* — the browser flashes
+  the C6 over USB (Chrome/Edge). Or *Manual download* and flash the factory
+  image with [web.esphome.io](https://web.esphome.io).
+- **Every time after that:** *Wirelessly* (OTA).
+
+The first build compiles ESP-IDF and takes a long time; later builds are quick.
 
 > **Never do a serial *factory* flash on a working gateway.** It erases NVS and
 > takes all seven blinds with it. OTA does not. This is why `testc6.yaml`
-> carries an `ota:` block — keep it.
+> carries an `ota:` block — keep it. On a gateway that is already running, only
+> ever choose *Wirelessly*.
+
+<details>
+<summary>Alternative: build against a local checkout</summary>
+
+For working on the component itself. On the HA box (Terminal & SSH add-on):
+
+```bash
+cd /config/esphome
+git clone https://github.com/deyanp/esphome-elero elero-src
+git -C elero-src checkout local/schlotterer-variant
+```
+
+and in `testc6.yaml` swap the `external_components:` source for:
+
+```yaml
+external_components:
+  - source:
+      type: local
+      path: elero-src/components
+```
+
+Then build with the ESPHome Builder as above, or `esphome run testc6.yaml` from
+the command line.
+
+</details>
 
 ### 4. Restore the blinds
 
